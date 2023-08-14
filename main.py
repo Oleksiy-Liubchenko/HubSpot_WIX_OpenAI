@@ -68,81 +68,69 @@ def top_bikes_email_sender(email: str, text: str) -> None:
         print("Произошла ошибка при отправке письма:", str(e))
 
 
-def string_cleaner(prompt: str) -> str:
-    """Функция сделана для того, чтобы убрать лишние
-     ключевые слова из запроса, который приходит в
-     контакт из парамметров заявки
-     и оставить чистый prompt для Chat GPT"""
-
-    cleaned_prompt = prompt[8:]
-    email_tag = "[почта -"
-    if cleaned_prompt.endswith("]"):
-        start_index = cleaned_prompt.rfind(email_tag)
-        if start_index != -1:
-            cleaned_prompt = cleaned_prompt[:start_index]
-    return cleaned_prompt
-
-
-def email_fetching_from_prompt(prompt: str) -> str:
-    """Функция извлекает из данных заявки почту клиента,
-    на которую нужно отправить email"""
-
-    email_start = "[почта - "
-    email_end = "]"
-    email_index_start = prompt.rfind(email_start)
-    email_index_end = prompt.rfind(email_end)
-    if email_index_start != -1 and email_index_end != -1:
-        email = prompt[
-                email_index_start +
-                len(email_start):email_index_end
-                ]
-        return email
-
-
-def task_starter() -> None:
+def task_starter():
     """Главная функция, которая запускает весь процесс:
-    1) подключается к HubSpot API находит нужные сделки
+    1) подключается к HubSpot API находит нужные сделки и лиды
     2) генерирует и отправляет письмо
-    3) изменяет статус сделки"""
+    3) изменяет статус сделки + properties лида"""
 
+    contacts_url = 'https://api.hubapi.com/crm/v3/objects/contacts?properties=prompt,email,is_prompt_sent'
+    deals_url_update = "https://api.hubapi.com/crm/v4/objects/deals?associations=contact&contactId&properties=prompt,email,is_prompt_sent"
     headers = {
         "Authorization": f"Bearer {os.getenv('HUBSPOT_PRIVATE_APPS_API_KEY')}"
     }
-    response = requests.get(DEALS_URL, headers=headers)
+    response = requests.get(deals_url_update, headers=headers)
+    response_contacts = requests.get(contacts_url, headers=headers)
 
     if response.status_code == 200:
-
         data = response.json()
-        for deal in data["results"]:
 
-            if deal["properties"]["dealstage"] == "appointmentscheduled" and \
-                    deal["properties"]["dealname"][0:8] == "[prompt]":
+        for deal in data["results"]:  # находим созданную сделку
+            if "associations" in deal:
+                contact_id = deal['associations']['contacts']['results'][0]['id']
+                deal_id = deal["id"]
 
-                dirty_prompt = deal["properties"]["dealname"]
-                client_email = email_fetching_from_prompt(dirty_prompt)
-                clean_prompt = string_cleaner(dirty_prompt)
+                contact_data = response_contacts.json()
 
-                print("Подготовка к отправке письма")
-                top_bikes_email_sender(
-                    client_email, chat_gpt_request(clean_prompt)
-                )
+                for contact in contact_data["results"]:  # находим привязаный лид к сделке
+                    if contact["id"] == contact_id:
+                        if contact["properties"]["is_prompt_sent"] == "no":
+                            lead_contact = contact["id"]
+                            client_email = contact["properties"]["email"]
+                            client_prompt = contact["properties"]["prompt"]
 
-                data = {
-                    "properties": {
-                        "dealstage": "presentationscheduled"
-                    }
-                }
-                update_url = f"{DEALS_URL}/{deal['id']}"
-                response = requests.patch(update_url, json=data, headers=headers)
+                            top_bikes_email_sender(  # отправляем письмо на почту
+                                client_email, chat_gpt_request(client_prompt)
+                            )
 
-                if response.status_code == 200:
-                    # else оставил для лчушей читаемости кода
-                    print("Статус сделки успешно обновлен")
-                else:
-                    print("Произошла ошибка при обновлении статуса сделки:",
-                          response.text)
-    else:
-        print('Ошибка при выполнении запроса:', response.content)
+                            update_url = f'https://api.hubapi.com/crm/v3/objects/contacts/{lead_contact}'  # обновляем в контакте is_prompt_sent на "yes"
+                            update_payload_contact = {
+                                "properties": {
+                                    "is_prompt_sent": "yes"
+                                }
+                            }
+                            response = requests.patch(update_url, json=update_payload_contact, headers=headers)
+
+                            if response.status_code == 200:
+                                print(f"Значение 'is_prompt_sent' обновлено для контакта {lead_contact}.")
+                            else:
+                                print(f"Произошла ошибка при обновлении значения 'is_prompt_sent' для контакта {lead_contact}:")
+                                print(response.status_code, response.text)
+
+                            update_url_deal = f'https://api.hubapi.com/crm/v3/objects/deals/{deal_id}'  # обновляем в сделке статус на "Presentation Scheduled"
+                            update_payload_deal = {
+                                "properties": {
+                                    "dealstage": "presentationscheduled"
+                                }
+                            }
+                            response = requests.patch(update_url_deal, json=update_payload_deal, headers=headers)
+
+                            if response.status_code == 200:
+                                # else оставил для лчушей читаемости кода
+                                print("Статус сделки успешно обновлен")
+                            else:
+                                print("Произошла ошибка при обновлении статуса сделки:",
+                                      response.text)
 
 
 task_starter()
