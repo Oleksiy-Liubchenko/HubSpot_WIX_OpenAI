@@ -14,3 +14,5 @@ requests==2.31.0
 tqdm==4.66.1
 urllib3==2.0.4
 yarl==1.9.2
+
+django-scheduler~=0.10.1
