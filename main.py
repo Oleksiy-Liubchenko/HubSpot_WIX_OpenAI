@@ -1,4 +1,6 @@
 import os
+import time
+
 import openai as openai
 import requests
 import smtplib
@@ -98,11 +100,12 @@ def task_starter():
                             lead_contact = contact["id"]
                             client_email = contact["properties"]["email"]
                             client_prompt = contact["properties"]["prompt"]
-
-                            top_bikes_email_sender(  # отправляем письмо на почту
+                            print("запускаем функцию отправки письма")
+                            # отправляем письмо на почту
+                            top_bikes_email_sender(
                                 client_email, chat_gpt_request(client_prompt)
                             )
-
+                            print("закрываем функцию отправки письма")
                             update_url = f'https://api.hubapi.com/crm/v3/objects/contacts/{lead_contact}'  # обновляем в контакте is_prompt_sent на "yes"
                             update_payload_contact = {
                                 "properties": {
@@ -132,5 +135,8 @@ def task_starter():
                                 print("Произошла ошибка при обновлении статуса сделки:",
                                       response.text)
 
-
-task_starter()
+if __name__ == "__main__":
+    while True:
+        print("стартуем", datetime.now())
+        task_starter()
+        time.sleep(30)
