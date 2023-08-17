@@ -7,6 +7,7 @@ import smtplib
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from dotenv import load_dotenv
+from datetime import datetime
 
 load_dotenv()
 
@@ -135,8 +136,9 @@ def task_starter():
                                 print("Произошла ошибка при обновлении статуса сделки:",
                                       response.text)
 
+
 if __name__ == "__main__":
     while True:
-        print("стартуем", datetime.now())
+        print("Запуск", datetime.now())
         task_starter()
         time.sleep(30)
